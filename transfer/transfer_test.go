@@ -2,11 +2,23 @@ package transfer
 
 import (
 	"context"
+	"fmt"
 	"math"
 	"math/rand"
+	"net"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"reflect"
 	"sync"
 	"testing"
+	"time"
+
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/status"
+	transferv1 "metroparadox/gen/metroparadox/transfer/v1"
 )
 
 // What are the invariants and post conditions?
@@ -22,6 +34,103 @@ import (
 
 // Not in scope:
 // We should assert for user facing error messages
+
+var (
+	testGRPCAddr    string
+	testControlAddr string
+	testGRPCClient  transferv1.TransferServiceClient
+)
+
+func TestMain(m *testing.M) {
+	tmpDir, err := os.MkdirTemp("", "metroparadox-test-*")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to create temp dir: %v\n", err)
+		os.Exit(1)
+	}
+
+	binPath := filepath.Join(tmpDir, "server")
+	buildCmd := exec.Command("go", "build", "-o", binPath, "../cmd/server")
+	buildCmd.Stdout = os.Stdout
+	buildCmd.Stderr = os.Stderr
+	if err := buildCmd.Run(); err != nil {
+		_ = os.RemoveAll(tmpDir)
+		fmt.Fprintf(os.Stderr, "failed to build server binary: %v\n", err)
+		os.Exit(1)
+	}
+
+	testGRPCAddr = freeLocalAddr()
+	testControlAddr = freeLocalAddr()
+
+	srvCmd := exec.Command(binPath, "-addr", testGRPCAddr, "-control-addr", testControlAddr)
+	srvCmd.Stdout = os.Stdout
+	srvCmd.Stderr = os.Stderr
+	if err := srvCmd.Start(); err != nil {
+		_ = os.RemoveAll(tmpDir)
+		fmt.Fprintf(os.Stderr, "failed to start server process: %v\n", err)
+		os.Exit(1)
+	}
+
+	if err := waitForPort(testGRPCAddr, 5*time.Second); err != nil {
+		_ = srvCmd.Process.Kill()
+		_ = os.RemoveAll(tmpDir)
+		fmt.Fprintf(os.Stderr, "gRPC server did not become ready: %v\n", err)
+		os.Exit(1)
+	}
+	if err := waitForPort(testControlAddr, 5*time.Second); err != nil {
+		_ = srvCmd.Process.Kill()
+		_ = os.RemoveAll(tmpDir)
+		fmt.Fprintf(os.Stderr, "control server did not become ready: %v\n", err)
+		os.Exit(1)
+	}
+
+	conn, err := grpc.NewClient(testGRPCAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		_ = srvCmd.Process.Kill()
+		_ = os.RemoveAll(tmpDir)
+		fmt.Fprintf(os.Stderr, "failed to create gRPC client: %v\n", err)
+		os.Exit(1)
+	}
+	testGRPCClient = transferv1.NewTransferServiceClient(conn)
+
+	code := m.Run()
+
+	_ = conn.Close()
+	_ = srvCmd.Process.Kill()
+	_, _ = srvCmd.Process.Wait()
+	_ = os.RemoveAll(tmpDir)
+	os.Exit(code)
+}
+
+func freeLocalAddr() string {
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		panic(err)
+	}
+	addr := l.Addr().String()
+	_ = l.Close()
+	return addr
+}
+
+func waitForPort(addr string, timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		conn, err := net.DialTimeout("tcp", addr, 50*time.Millisecond)
+		if err == nil {
+			_ = conn.Close()
+			return nil
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	return fmt.Errorf("timeout waiting for %s", addr)
+}
+
+func setupTestClient(t *testing.T, store *MemoryStore) transferv1.TransferServiceClient {
+	t.Helper()
+	if err := store.AttachRemote(testControlAddr); err != nil {
+		t.Fatalf("AttachRemote failed: %v", err)
+	}
+	return testGRPCClient
+}
 
 func totalBalance(t *testing.T, store Store) float64 {
 	t.Helper()
@@ -57,23 +166,23 @@ func TestTransferMoney_ValidRequest_UpdatesBalances(t *testing.T) {
 				Account{ID: "bob", Balance: 10, Currency: tc.currency},
 				Account{ID: "charlie", Balance: 50, Currency: tc.currency},
 			)
-			svc := NewService(store)
-			req := TransferRequest{
-				FromAccountID: "alice",
-				ToAccountID:   "bob",
-				Amount:        tc.amount,
-				Currency:      tc.currency,
+			client := setupTestClient(t, store)
+			req := &transferv1.TransferMoneyRequest{
+				SourceAccountId:      "alice",
+				DestinationAccountId: "bob",
+				Amount:               tc.amount,
+				CurrencyCode:         tc.currency,
 			}
 
 			// When
-			res, err := svc.TransferMoney(context.Background(), req)
+			res, err := client.TransferMoney(context.Background(), req)
 
 			// Then
 			if err != nil {
 				t.Fatalf("expected nil error, got %v", err)
 			}
-			if res == nil || res.TransferID == "" {
-				t.Fatalf("expected non-empty TransferID, got %+v", res)
+			if res == nil || res.GetTransferId() == "" {
+				t.Fatalf("expected non-empty TransferId, got %+v", res)
 			}
 			alice, _ := store.GetAccount(context.Background(), "alice")
 			bob, _ := store.GetAccount(context.Background(), "bob")
@@ -101,7 +210,7 @@ func TestTransferMoney_MixedTransfers_ConservesTotalMoney(t *testing.T) {
 		{ID: "d", Balance: float32(100 + rng.Intn(500)), Currency: "USD"},
 	}
 	store := NewMemoryStore(accounts...)
-	svc := NewService(store)
+	client := setupTestClient(t, store)
 	before := totalBalance(t, store)
 	initialByID := make(map[string]float32, len(accounts))
 	for _, a := range accounts {
@@ -115,11 +224,11 @@ func TestTransferMoney_MixedTransfers_ConservesTotalMoney(t *testing.T) {
 		src := ids[rng.Intn(len(ids))]
 		dst := ids[rng.Intn(len(ids))]
 		amount := float32(rng.Intn(300) - 50)
-		_, err := svc.TransferMoney(context.Background(), TransferRequest{
-			FromAccountID: src,
-			ToAccountID:   dst,
-			Amount:        amount,
-			Currency:      "USD",
+		_, err := client.TransferMoney(context.Background(), &transferv1.TransferMoneyRequest{
+			SourceAccountId:      src,
+			DestinationAccountId: dst,
+			Amount:               amount,
+			CurrencyCode:         "USD",
 		})
 		if err == nil {
 			succeeded++
@@ -162,7 +271,7 @@ func TestTransferMoney_ConcurrentRequests_MatchesSequentialOrder(t *testing.T) {
 		{FromAccountID: "b", ToAccountID: "a", Amount: 30, Currency: "USD"},
 	}
 	store := NewMemoryStore(initial...)
-	svc := NewService(store)
+	client := setupTestClient(t, store)
 
 	// When
 	var wg sync.WaitGroup
@@ -172,7 +281,13 @@ func TestTransferMoney_ConcurrentRequests_MatchesSequentialOrder(t *testing.T) {
 		wg.Add(1)
 		go func(req TransferRequest) {
 			defer wg.Done()
-			if _, err := svc.TransferMoney(context.Background(), req); err == nil {
+			_, err := client.TransferMoney(context.Background(), &transferv1.TransferMoneyRequest{
+				SourceAccountId:      req.FromAccountID,
+				DestinationAccountId: req.ToAccountID,
+				Amount:               req.Amount,
+				CurrencyCode:         req.Currency,
+			})
+			if err == nil {
 				mu.Lock()
 				succeeded++
 				mu.Unlock()
@@ -239,21 +354,24 @@ func TestTransferMoney_StorageFailureMidTransfer_LeavesBalancesUnchanged(t *test
 		Account{ID: "a", Balance: 100, Currency: "USD"},
 		Account{ID: "b", Balance: 50, Currency: "USD"},
 	)
-	svc := NewService(store)
+	client := setupTestClient(t, store)
 	store.FailNextTransfer()
-	req := TransferRequest{
-		FromAccountID: "a",
-		ToAccountID:   "b",
-		Amount:        30,
-		Currency:      "USD",
+	req := &transferv1.TransferMoneyRequest{
+		SourceAccountId:      "a",
+		DestinationAccountId: "b",
+		Amount:               30,
+		CurrencyCode:         "USD",
 	}
 
 	// When
-	_, err := svc.TransferMoney(context.Background(), req)
+	_, err := client.TransferMoney(context.Background(), req)
 
 	// Then
 	if err == nil {
 		t.Fatalf("expected error when storage fails mid-transfer, got nil")
+	}
+	if status.Code(err) == codes.Unimplemented {
+		t.Fatalf("service is unimplemented: %v", err)
 	}
 	a, _ := store.GetAccount(context.Background(), "a")
 	b, _ := store.GetAccount(context.Background(), "b")
@@ -265,114 +383,114 @@ func TestTransferMoney_StorageFailureMidTransfer_LeavesBalancesUnchanged(t *test
 func TestTransferMoney_InvalidRequest_ReturnsError(t *testing.T) {
 	tests := []struct {
 		name string
-		req  TransferRequest
+		req  *transferv1.TransferMoneyRequest
 	}{
 		{
 			name: "insufficient funds",
-			req: TransferRequest{
-				FromAccountID: "a",
-				ToAccountID:   "b",
-				Amount:        500,
-				Currency:      "USD",
+			req: &transferv1.TransferMoneyRequest{
+				SourceAccountId:      "a",
+				DestinationAccountId: "b",
+				Amount:               500,
+				CurrencyCode:         "USD",
 			},
 		},
 		{
 			name: "zero amount",
-			req: TransferRequest{
-				FromAccountID: "a",
-				ToAccountID:   "b",
-				Amount:        0,
-				Currency:      "USD",
+			req: &transferv1.TransferMoneyRequest{
+				SourceAccountId:      "a",
+				DestinationAccountId: "b",
+				Amount:               0,
+				CurrencyCode:         "USD",
 			},
 		},
 		{
 			name: "negative amount",
-			req: TransferRequest{
-				FromAccountID: "a",
-				ToAccountID:   "b",
-				Amount:        -10,
-				Currency:      "USD",
+			req: &transferv1.TransferMoneyRequest{
+				SourceAccountId:      "a",
+				DestinationAccountId: "b",
+				Amount:               -10,
+				CurrencyCode:         "USD",
 			},
 		},
 		{
 			name: "empty currency",
-			req: TransferRequest{
-				FromAccountID: "a",
-				ToAccountID:   "b",
-				Amount:        10,
-				Currency:      "",
+			req: &transferv1.TransferMoneyRequest{
+				SourceAccountId:      "a",
+				DestinationAccountId: "b",
+				Amount:               10,
+				CurrencyCode:         "",
 			},
 		},
 		{
 			name: "currency mismatch with destination",
-			req: TransferRequest{
-				FromAccountID: "a",
-				ToAccountID:   "eur",
-				Amount:        10,
-				Currency:      "USD",
+			req: &transferv1.TransferMoneyRequest{
+				SourceAccountId:      "a",
+				DestinationAccountId: "eur",
+				Amount:               10,
+				CurrencyCode:         "USD",
 			},
 		},
 		{
 			name: "currency mismatch with source",
-			req: TransferRequest{
-				FromAccountID: "a",
-				ToAccountID:   "b",
-				Amount:        10,
-				Currency:      "EUR",
+			req: &transferv1.TransferMoneyRequest{
+				SourceAccountId:      "a",
+				DestinationAccountId: "b",
+				Amount:               10,
+				CurrencyCode:         "EUR",
 			},
 		},
 		{
 			name: "self transfer",
-			req: TransferRequest{
-				FromAccountID: "a",
-				ToAccountID:   "a",
-				Amount:        10,
-				Currency:      "USD",
+			req: &transferv1.TransferMoneyRequest{
+				SourceAccountId:      "a",
+				DestinationAccountId: "a",
+				Amount:               10,
+				CurrencyCode:         "USD",
 			},
 		},
 		{
 			name: "non-existent source account",
-			req: TransferRequest{
-				FromAccountID: "unknown",
-				ToAccountID:   "b",
-				Amount:        10,
-				Currency:      "USD",
+			req: &transferv1.TransferMoneyRequest{
+				SourceAccountId:      "unknown",
+				DestinationAccountId: "b",
+				Amount:               10,
+				CurrencyCode:         "USD",
 			},
 		},
 		{
 			name: "non-existent destination account",
-			req: TransferRequest{
-				FromAccountID: "a",
-				ToAccountID:   "unknown",
-				Amount:        10,
-				Currency:      "USD",
+			req: &transferv1.TransferMoneyRequest{
+				SourceAccountId:      "a",
+				DestinationAccountId: "unknown",
+				Amount:               10,
+				CurrencyCode:         "USD",
 			},
 		},
 		{
 			name: "infinite amount",
-			req: TransferRequest{
-				FromAccountID: "a",
-				ToAccountID:   "b",
-				Amount:        float32(math.Inf(1)),
-				Currency:      "USD",
+			req: &transferv1.TransferMoneyRequest{
+				SourceAccountId:      "a",
+				DestinationAccountId: "b",
+				Amount:               float32(math.Inf(1)),
+				CurrencyCode:         "USD",
 			},
 		},
 		{
 			name: "NaN amount",
-			req: TransferRequest{
-				FromAccountID: "a",
-				ToAccountID:   "b",
-				Amount:        float32(math.NaN()),
-				Currency:      "USD",
+			req: &transferv1.TransferMoneyRequest{
+				SourceAccountId:      "a",
+				DestinationAccountId: "b",
+				Amount:               float32(math.NaN()),
+				CurrencyCode:         "USD",
 			},
 		},
 		{
 			name: "unsupported currency",
-			req: TransferRequest{
-				FromAccountID: "eur",
-				ToAccountID:   "eur2",
-				Amount:        10,
-				Currency:      "EUR",
+			req: &transferv1.TransferMoneyRequest{
+				SourceAccountId:      "eur",
+				DestinationAccountId: "eur2",
+				Amount:               10,
+				CurrencyCode:         "EUR",
 			},
 		},
 	}
@@ -386,14 +504,17 @@ func TestTransferMoney_InvalidRequest_ReturnsError(t *testing.T) {
 				Account{ID: "eur", Balance: 50, Currency: "EUR"},
 				Account{ID: "eur2", Balance: 50, Currency: "EUR"},
 			)
-			svc := NewService(store)
+			client := setupTestClient(t, store)
 
 			// When
-			_, err := svc.TransferMoney(context.Background(), tc.req)
+			_, err := client.TransferMoney(context.Background(), tc.req)
 
 			// Then
 			if err == nil {
 				t.Fatalf("expected error for %s, got nil", tc.name)
+			}
+			if status.Code(err) == codes.Unimplemented {
+				t.Fatalf("service is unimplemented: %v", err)
 			}
 			a, _ := store.GetAccount(context.Background(), "a")
 			b, _ := store.GetAccount(context.Background(), "b")
@@ -423,18 +544,21 @@ func FuzzTransferMoney_RandomInputs_ConservesTotalMoney(f *testing.F) {
 			Account{ID: "a", Balance: 100, Currency: "USD"},
 			Account{ID: "b", Balance: 50, Currency: "USD"},
 		)
-		svc := NewService(store)
+		client := setupTestClient(t, store)
 		before := totalBalance(t, store)
 
 		// When
-		_, _ = svc.TransferMoney(context.Background(), TransferRequest{
-			FromAccountID: from,
-			ToAccountID:   to,
-			Amount:        amount,
-			Currency:      currency,
+		_, err := client.TransferMoney(context.Background(), &transferv1.TransferMoneyRequest{
+			SourceAccountId:      from,
+			DestinationAccountId: to,
+			Amount:               amount,
+			CurrencyCode:         currency,
 		})
 
 		// Then
+		if status.Code(err) == codes.Unimplemented {
+			t.Fatalf("service is unimplemented: %v", err)
+		}
 		after := totalBalance(t, store)
 		if math.IsNaN(after) || after != before {
 			t.Fatalf("total money not conserved: before=%v, after=%v", before, after)

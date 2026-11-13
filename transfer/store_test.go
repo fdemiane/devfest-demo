@@ -199,3 +199,48 @@ func TestExecuteTransfer_AfterInjectedFailure_NextTransferSucceeds(t *testing.T)
 	}
 }
 
+func TestAttachRemote_ConnectedControlServer_ForwardsOperations(t *testing.T) {
+	// Given
+	remoteStore := NewMemoryStore()
+	lis, err := remoteStore.ListenControl("127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("ListenControl failed: %v", err)
+	}
+	t.Cleanup(func() { _ = lis.Close() })
+	localStore := NewMemoryStore(
+		Account{ID: "alice", Balance: 100, Currency: "USD"},
+		Account{ID: "bob", Balance: 50, Currency: "USD"},
+	)
+
+	// When
+	if err := localStore.AttachRemote(lis.Addr().String()); err != nil {
+		t.Fatalf("AttachRemote failed: %v", err)
+	}
+	localStore.FailNextTransfer()
+	alice, err := localStore.GetAccount(context.Background(), "alice")
+	all, allErr := localStore.AllAccounts(context.Background())
+	_, missingErr := localStore.GetAccount(context.Background(), "missing")
+	_, txErr := remoteStore.ExecuteTransfer(
+		context.Background(),
+		TransferRequest{FromAccountID: "alice", ToAccountID: "bob", Amount: 10, Currency: "USD"},
+		func(src, dst Account) (Account, Account, *TransferResponse, error) {
+			return src, dst, &TransferResponse{TransferID: "tx-1"}, nil
+		},
+	)
+
+	// Then
+	if err != nil || alice.Balance != 100 {
+		t.Fatalf("got alice %+v, err %v", alice, err)
+	}
+	if allErr != nil || len(all) != 2 {
+		t.Fatalf("got %d accounts, err %v", len(all), allErr)
+	}
+	if !errors.Is(missingErr, ErrNotFound) {
+		t.Fatalf("expected ErrNotFound, got %v", missingErr)
+	}
+	if !errors.Is(txErr, ErrInjectedFailure) {
+		t.Fatalf("expected ErrInjectedFailure on remoteStore, got %v", txErr)
+	}
+}
+
+

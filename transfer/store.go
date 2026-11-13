@@ -18,6 +18,7 @@ type MemoryStore struct {
 	mu       sync.Mutex
 	accounts map[string]Account
 	failNext bool
+	remote   *rpcClient
 }
 
 func NewMemoryStore(accounts ...Account) *MemoryStore {
@@ -33,12 +34,19 @@ func NewMemoryStore(accounts ...Account) *MemoryStore {
 func (s *MemoryStore) FailNextTransfer() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.remote != nil {
+		_ = s.remote.failNext()
+		return
+	}
 	s.failNext = true
 }
 
 func (s *MemoryStore) GetAccount(_ context.Context, id string) (Account, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.remote != nil {
+		return s.remote.getAccount(id)
+	}
 	acc, ok := s.accounts[id]
 	if !ok {
 		return Account{}, fmt.Errorf("%w: %s", ErrNotFound, id)
@@ -49,6 +57,9 @@ func (s *MemoryStore) GetAccount(_ context.Context, id string) (Account, error) 
 func (s *MemoryStore) AllAccounts(_ context.Context) ([]Account, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.remote != nil {
+		return s.remote.allAccounts()
+	}
 	out := make([]Account, 0, len(s.accounts))
 	for _, acc := range s.accounts {
 		out = append(out, acc)
