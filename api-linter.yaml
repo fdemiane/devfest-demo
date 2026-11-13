@@ -1,0 +1,4 @@
+# Google API Linter configuration (https://linter.aip.dev/)
+- included_paths:
+    - '**/*.proto'
+
