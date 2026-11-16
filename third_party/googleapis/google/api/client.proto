@@ -1,0 +1,17 @@
+syntax = "proto3";
+
+package google.api;
+
+import "google/protobuf/descriptor.proto";
+
+option go_package = "google.golang.org/genproto/googleapis/api/annotations;annotations";
+
+extend google.protobuf.MethodOptions {
+  repeated string method_signature = 1051;
+}
+
+extend google.protobuf.ServiceOptions {
+  string default_host = 1049;
+  string oauth_scopes = 1050;
+}
+

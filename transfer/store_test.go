@@ -4,11 +4,14 @@ import (
 	"context"
 	"errors"
 	"testing"
+
+	"google.golang.org/genproto/googleapis/type/money"
+	"google.golang.org/protobuf/proto"
 )
 
 func TestGetAccount_ExistingID_ReturnsAccount(t *testing.T) {
 	// Given
-	want := Account{ID: "alice", Balance: 100, Currency: "USD"}
+	want := Account{ID: "alice", Balance: &money.Money{CurrencyCode: "USD", Units: 100}}
 	store := NewMemoryStore(want)
 
 	// When
@@ -18,14 +21,14 @@ func TestGetAccount_ExistingID_ReturnsAccount(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected nil error, got %v", err)
 	}
-	if got != want {
+	if got.ID != want.ID || !proto.Equal(got.Balance, want.Balance) {
 		t.Fatalf("got %+v, want %+v", got, want)
 	}
 }
 
 func TestGetAccount_MissingID_ReturnsNotFoundError(t *testing.T) {
 	// Given
-	store := NewMemoryStore(Account{ID: "alice", Balance: 100, Currency: "USD"})
+	store := NewMemoryStore(Account{ID: "alice", Balance: &money.Money{CurrencyCode: "USD", Units: 100}})
 
 	// When
 	_, err := store.GetAccount(context.Background(), "unknown")
@@ -39,8 +42,8 @@ func TestGetAccount_MissingID_ReturnsNotFoundError(t *testing.T) {
 func TestAllAccounts_PopulatedStore_ReturnsAllAccounts(t *testing.T) {
 	// Given
 	store := NewMemoryStore(
-		Account{ID: "alice", Balance: 100, Currency: "USD"},
-		Account{ID: "bob", Balance: 50, Currency: "USD"},
+		Account{ID: "alice", Balance: &money.Money{CurrencyCode: "USD", Units: 100}},
+		Account{ID: "bob", Balance: &money.Money{CurrencyCode: "USD", Units: 50}},
 	)
 
 	// When
@@ -74,15 +77,19 @@ func TestAllAccounts_EmptyStore_ReturnsEmptySlice(t *testing.T) {
 func TestExecuteTransfer_ValidCallback_UpdatesAccountsAndReturnsResponse(t *testing.T) {
 	// Given
 	store := NewMemoryStore(
-		Account{ID: "alice", Balance: 100, Currency: "USD"},
-		Account{ID: "bob", Balance: 50, Currency: "USD"},
+		Account{ID: "alice", Balance: &money.Money{CurrencyCode: "USD", Units: 100}},
+		Account{ID: "bob", Balance: &money.Money{CurrencyCode: "USD", Units: 50}},
 	)
-	req := TransferRequest{FromAccountID: "alice", ToAccountID: "bob", Amount: 25, Currency: "USD"}
+	req := TransferRequest{
+		SourceAccount:      "alice",
+		DestinationAccount: "bob",
+		Amount:             &money.Money{CurrencyCode: "USD", Units: 25},
+	}
 
 	// When
 	res, err := store.ExecuteTransfer(context.Background(), req, func(src, dst Account) (Account, Account, *TransferResponse, error) {
-		src.Balance -= req.Amount
-		dst.Balance += req.Amount
+		src.Balance.Units -= req.Amount.Units
+		dst.Balance.Units += req.Amount.Units
 		return src, dst, &TransferResponse{TransferID: "tx-1"}, nil
 	})
 
@@ -95,8 +102,8 @@ func TestExecuteTransfer_ValidCallback_UpdatesAccountsAndReturnsResponse(t *test
 	}
 	alice, _ := store.GetAccount(context.Background(), "alice")
 	bob, _ := store.GetAccount(context.Background(), "bob")
-	if alice.Balance != 75 || bob.Balance != 75 {
-		t.Fatalf("got balances alice=%v bob=%v, want 75, 75", alice.Balance, bob.Balance)
+	if alice.Balance.GetUnits() != 75 || bob.Balance.GetUnits() != 75 {
+		t.Fatalf("got balances alice=%v bob=%v, want 75, 75", alice.Balance.GetUnits(), bob.Balance.GetUnits())
 	}
 }
 
@@ -104,41 +111,41 @@ func TestExecuteTransfer_FailureCases_LeavesAccountsUnchanged(t *testing.T) {
 	callbackErr := errors.New("callback failed")
 
 	tests := []struct {
-		name       string
-		req        TransferRequest
-		failNext   bool
-		fn         func(src, dst Account) (Account, Account, *TransferResponse, error)
-		wantErr    error
+		name     string
+		req      TransferRequest
+		failNext bool
+		fn       func(src, dst Account) (Account, Account, *TransferResponse, error)
+		wantErr  error
 	}{
 		{
 			name:    "missing source account",
-			req:     TransferRequest{FromAccountID: "missing", ToAccountID: "bob", Amount: 10, Currency: "USD"},
+			req:     TransferRequest{SourceAccount: "missing", DestinationAccount: "bob", Amount: &money.Money{CurrencyCode: "USD", Units: 10}},
 			fn:      func(src, dst Account) (Account, Account, *TransferResponse, error) { return src, dst, &TransferResponse{}, nil },
 			wantErr: ErrNotFound,
 		},
 		{
 			name:    "missing destination account",
-			req:     TransferRequest{FromAccountID: "alice", ToAccountID: "missing", Amount: 10, Currency: "USD"},
+			req:     TransferRequest{SourceAccount: "alice", DestinationAccount: "missing", Amount: &money.Money{CurrencyCode: "USD", Units: 10}},
 			fn:      func(src, dst Account) (Account, Account, *TransferResponse, error) { return src, dst, &TransferResponse{}, nil },
 			wantErr: ErrNotFound,
 		},
 		{
 			name: "callback returns error",
-			req:  TransferRequest{FromAccountID: "alice", ToAccountID: "bob", Amount: 10, Currency: "USD"},
+			req:  TransferRequest{SourceAccount: "alice", DestinationAccount: "bob", Amount: &money.Money{CurrencyCode: "USD", Units: 10}},
 			fn: func(src, dst Account) (Account, Account, *TransferResponse, error) {
-				src.Balance -= 10
-				dst.Balance += 10
+				src.Balance.Units -= 10
+				dst.Balance.Units += 10
 				return src, dst, nil, callbackErr
 			},
 			wantErr: callbackErr,
 		},
 		{
 			name:     "injected storage failure",
-			req:      TransferRequest{FromAccountID: "alice", ToAccountID: "bob", Amount: 10, Currency: "USD"},
+			req:      TransferRequest{SourceAccount: "alice", DestinationAccount: "bob", Amount: &money.Money{CurrencyCode: "USD", Units: 10}},
 			failNext: true,
 			fn: func(src, dst Account) (Account, Account, *TransferResponse, error) {
-				src.Balance -= 10
-				dst.Balance += 10
+				src.Balance.Units -= 10
+				dst.Balance.Units += 10
 				return src, dst, &TransferResponse{TransferID: "tx-fail"}, nil
 			},
 			wantErr: ErrInjectedFailure,
@@ -149,8 +156,8 @@ func TestExecuteTransfer_FailureCases_LeavesAccountsUnchanged(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			// Given
 			store := NewMemoryStore(
-				Account{ID: "alice", Balance: 100, Currency: "USD"},
-				Account{ID: "bob", Balance: 50, Currency: "USD"},
+				Account{ID: "alice", Balance: &money.Money{CurrencyCode: "USD", Units: 100}},
+				Account{ID: "bob", Balance: &money.Money{CurrencyCode: "USD", Units: 50}},
 			)
 			if tc.failNext {
 				store.FailNextTransfer()
@@ -165,8 +172,8 @@ func TestExecuteTransfer_FailureCases_LeavesAccountsUnchanged(t *testing.T) {
 			}
 			alice, _ := store.GetAccount(context.Background(), "alice")
 			bob, _ := store.GetAccount(context.Background(), "bob")
-			if alice.Balance != 100 || bob.Balance != 50 {
-				t.Fatalf("balances changed: alice=%v bob=%v, want 100, 50", alice.Balance, bob.Balance)
+			if alice.Balance.GetUnits() != 100 || bob.Balance.GetUnits() != 50 {
+				t.Fatalf("balances changed: alice=%v bob=%v, want 100, 50", alice.Balance.GetUnits(), bob.Balance.GetUnits())
 			}
 		})
 	}
@@ -175,14 +182,14 @@ func TestExecuteTransfer_FailureCases_LeavesAccountsUnchanged(t *testing.T) {
 func TestExecuteTransfer_AfterInjectedFailure_NextTransferSucceeds(t *testing.T) {
 	// Given
 	store := NewMemoryStore(
-		Account{ID: "alice", Balance: 100, Currency: "USD"},
-		Account{ID: "bob", Balance: 50, Currency: "USD"},
+		Account{ID: "alice", Balance: &money.Money{CurrencyCode: "USD", Units: 100}},
+		Account{ID: "bob", Balance: &money.Money{CurrencyCode: "USD", Units: 50}},
 	)
 	store.FailNextTransfer()
-	req := TransferRequest{FromAccountID: "alice", ToAccountID: "bob", Amount: 10, Currency: "USD"}
+	req := TransferRequest{SourceAccount: "alice", DestinationAccount: "bob", Amount: &money.Money{CurrencyCode: "USD", Units: 10}}
 	cb := func(src, dst Account) (Account, Account, *TransferResponse, error) {
-		src.Balance -= req.Amount
-		dst.Balance += req.Amount
+		src.Balance.Units -= req.Amount.Units
+		dst.Balance.Units += req.Amount.Units
 		return src, dst, &TransferResponse{TransferID: "tx-ok"}, nil
 	}
 	_, _ = store.ExecuteTransfer(context.Background(), req, cb)
@@ -198,49 +205,3 @@ func TestExecuteTransfer_AfterInjectedFailure_NextTransferSucceeds(t *testing.T)
 		t.Fatalf("got response %+v, want TransferID tx-ok", res)
 	}
 }
-
-func TestAttachRemote_ConnectedControlServer_ForwardsOperations(t *testing.T) {
-	// Given
-	remoteStore := NewMemoryStore()
-	lis, err := remoteStore.ListenControl("127.0.0.1:0")
-	if err != nil {
-		t.Fatalf("ListenControl failed: %v", err)
-	}
-	t.Cleanup(func() { _ = lis.Close() })
-	localStore := NewMemoryStore(
-		Account{ID: "alice", Balance: 100, Currency: "USD"},
-		Account{ID: "bob", Balance: 50, Currency: "USD"},
-	)
-
-	// When
-	if err := localStore.AttachRemote(lis.Addr().String()); err != nil {
-		t.Fatalf("AttachRemote failed: %v", err)
-	}
-	localStore.FailNextTransfer()
-	alice, err := localStore.GetAccount(context.Background(), "alice")
-	all, allErr := localStore.AllAccounts(context.Background())
-	_, missingErr := localStore.GetAccount(context.Background(), "missing")
-	_, txErr := remoteStore.ExecuteTransfer(
-		context.Background(),
-		TransferRequest{FromAccountID: "alice", ToAccountID: "bob", Amount: 10, Currency: "USD"},
-		func(src, dst Account) (Account, Account, *TransferResponse, error) {
-			return src, dst, &TransferResponse{TransferID: "tx-1"}, nil
-		},
-	)
-
-	// Then
-	if err != nil || alice.Balance != 100 {
-		t.Fatalf("got alice %+v, err %v", alice, err)
-	}
-	if allErr != nil || len(all) != 2 {
-		t.Fatalf("got %d accounts, err %v", len(all), allErr)
-	}
-	if !errors.Is(missingErr, ErrNotFound) {
-		t.Fatalf("expected ErrNotFound, got %v", missingErr)
-	}
-	if !errors.Is(txErr, ErrInjectedFailure) {
-		t.Fatalf("expected ErrInjectedFailure on remoteStore, got %v", txErr)
-	}
-}
-
-

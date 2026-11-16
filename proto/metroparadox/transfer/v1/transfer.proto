@@ -1,0 +1,30 @@
+syntax = "proto3";
+
+package metroparadox.transfer.v1;
+
+import "google/api/annotations.proto";
+
+option go_package = "metroparadox/gen/metroparadox/transfer/v1;transferv1";
+option java_multiple_files = true;
+option java_outer_classname = "TransferProto";
+option java_package = "com.metroparadox.transfer.v1";
+
+// TransferService handles transfer operations.
+service TransferService {
+  // SayHello returns a greeting message.
+  rpc SayHello(SayHelloRequest) returns (SayHelloResponse) {
+    option (google.api.http) = {
+      post: "/v1:sayHello"
+      body: "*"
+    };
+  }
+}
+
+// Request message for SayHello.
+message SayHelloRequest {}
+
+// Response message for SayHello.
+message SayHelloResponse {
+  // The greeting message.
+  string message = 1;
+}

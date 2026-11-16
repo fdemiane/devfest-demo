@@ -1,0 +1,23 @@
+syntax = "proto3";
+
+package google.api;
+
+import "google/protobuf/descriptor.proto";
+
+option go_package = "google.golang.org/genproto/googleapis/api/annotations;annotations";
+
+extend google.protobuf.FieldOptions {
+  FieldInfo field_info = 291403980;
+}
+
+message FieldInfo {
+  enum Format {
+    FORMAT_UNSPECIFIED = 0;
+    UUID4 = 1;
+    IPV4 = 2;
+    IPV6 = 3;
+    IPV4_OR_IPV6 = 4;
+  }
+  Format format = 1;
+}
+

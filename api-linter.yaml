@@ -1,10 +1,3 @@
 # Google API Linter configuration (https://linter.aip.dev/)
 - included_paths:
     - '**/*.proto'
-  disabled_rules:
-    - 'core::0127::http-annotation'
-    - 'core::0191'
-    - 'core::0192'
-    - 'core::0203::field-behavior-required'
-
-

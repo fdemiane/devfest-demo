@@ -1,0 +1,12 @@
+syntax = "proto3";
+
+package google.type;
+
+option go_package = "google.golang.org/genproto/googleapis/type/money;money";
+
+message Money {
+  string currency_code = 1;
+  int64 units = 2;
+  int32 nanos = 3;
+}
+

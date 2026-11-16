@@ -8,11 +8,8 @@ test:
 	go test -v ./...
 
 lint:
-	PATH="$(GOBIN):$$PATH" $(GOBIN)/api-linter --set-exit-status -I proto --config=api-linter.yaml $(PROTOS)
+	cd proto && PATH="$(GOBIN):$$PATH" $(GOBIN)/api-linter --set-exit-status -I ../third_party/googleapis --config=../api-linter.yaml $(patsubst proto/%,%,$(PROTOS))
 
 proto:
-	mkdir -p gen
-	PATH="$(GOBIN):$$PATH" $(PROTOC) -I proto --go_out=gen --go_opt=paths=source_relative --go-grpc_out=gen --go-grpc_opt=paths=source_relative $(PROTOS)
-
-
-
+	rm -rf gen && mkdir -p gen
+	PATH="$(GOBIN):$$PATH" $(PROTOC) -I proto -I third_party/googleapis --go_out=gen --go_opt=paths=source_relative --go-grpc_out=gen --go-grpc_opt=paths=source_relative $(PROTOS)

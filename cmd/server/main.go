@@ -1,37 +1,30 @@
 package main
 
 import (
-	"flag"
 	"log"
 	"net"
 
+	"google.golang.org/genproto/googleapis/type/money"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/reflection"
+	transferv1 "metroparadox/gen/metroparadox/transfer/v1"
 	"metroparadox/transfer"
 )
 
 func main() {
-	addr := flag.String("addr", ":50051", "gRPC server listen address")
-	controlAddr := flag.String("control-addr", "", "store control listen address")
-	flag.Parse()
-
 	store := transfer.NewMemoryStore(
-		transfer.Account{ID: "alice", Balance: 100, Currency: "USD"},
-		transfer.Account{ID: "bob", Balance: 50, Currency: "USD"},
+		transfer.Account{ID: "alice", Balance: &money.Money{CurrencyCode: "USD", Units: 100}},
+		transfer.Account{ID: "bob", Balance: &money.Money{CurrencyCode: "USD", Units: 50}},
 	)
 
-	if *controlAddr != "" {
-		if _, err := store.ListenControl(*controlAddr); err != nil {
-			log.Fatalf("control listen failed: %v", err)
-		}
-	}
-
-	lis, err := net.Listen("tcp", *addr)
+	lis, err := net.Listen("tcp", ":50051")
 	if err != nil {
 		log.Fatalf("listen failed: %v", err)
 	}
 
 	grpcServer := grpc.NewServer()
-	_ = transfer.NewService(store)
+	transferv1.RegisterTransferServiceServer(grpcServer, transfer.NewService(store))
+	reflection.Register(grpcServer)
 
 	if err := grpcServer.Serve(lis); err != nil {
 		log.Fatalf("serve failed: %v", err)
