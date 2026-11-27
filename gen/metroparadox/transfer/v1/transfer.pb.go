@@ -266,9 +266,9 @@ type CreateTransferRequest struct {
 	TransferId string `protobuf:"bytes,2,opt,name=transfer_id,json=transferId,proto3" json:"transfer_id,omitempty"`
 	// A unique identifier for this request. Restricted to 36 ASCII characters.
 	// A random UUID is recommended.
-	// This request is only idempotent if a `request_id` is provided. Reusing
-	// the same `request_id` with different request parameters fails with
+	// Reusing the same `request_id` with different request parameters fails with
 	// `INVALID_ARGUMENT`.
+	// (-- api-linter: core::0133::request-required-fields=disabled --)
 	RequestId     string `protobuf:"bytes,3,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -353,10 +353,10 @@ const file_metroparadox_transfer_v1_transfer_proto_rawDesc = "" +
 	"\vtransfer_id\x18\x02 \x01(\tB\x04\xe2A\x01\x01R\n" +
 	"transferId\x12+\n" +
 	"\n" +
-	"request_id\x18\x03 \x01(\tB\f\xe2A\x01\x01\xe2\x8c\xcf\xd7\b\x02\b\x01R\trequestId2\xad\x02\n" +
+	"request_id\x18\x03 \x01(\tB\f\xe2A\x01\x02\xe2\x8c\xcf\xd7\b\x02\b\x01R\trequestId2\xb8\x02\n" +
 	"\x0fTransferService\x12z\n" +
-	"\bSayHello\x12).metroparadox.transfer.v1.SayHelloRequest\x1a*.metroparadox.transfer.v1.SayHelloResponse\"\x17\x82\xd3\xe4\x93\x02\x11:\x01*\"\f/v1:sayHello\x12\x9d\x01\n" +
-	"\x0eCreateTransfer\x12/.metroparadox.transfer.v1.CreateTransferRequest\x1a\".metroparadox.transfer.v1.Transfer\"6\xdaA\x14transfer,transfer_id\x82\xd3\xe4\x93\x02\x19:\btransfer\"\r/v1/transfersBe\n" +
+	"\bSayHello\x12).metroparadox.transfer.v1.SayHelloRequest\x1a*.metroparadox.transfer.v1.SayHelloResponse\"\x17\x82\xd3\xe4\x93\x02\x11:\x01*\"\f/v1:sayHello\x12\xa8\x01\n" +
+	"\x0eCreateTransfer\x12/.metroparadox.transfer.v1.CreateTransferRequest\x1a\".metroparadox.transfer.v1.Transfer\"A\xdaA\x1ftransfer,transfer_id,request_id\x82\xd3\xe4\x93\x02\x19:\btransfer\"\r/v1/transfersBe\n" +
 	"\x1ccom.metroparadox.transfer.v1B\rTransferProtoP\x01Z4metroparadox/gen/metroparadox/transfer/v1;transferv1b\x06proto3"
 
 var (

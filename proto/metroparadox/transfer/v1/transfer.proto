@@ -40,7 +40,8 @@ service TransferService {
       post: "/v1/transfers"
       body: "transfer"
     };
-    option (google.api.method_signature) = "transfer,transfer_id";
+    // (-- api-linter: core::0133::method-signature=disabled --)
+    option (google.api.method_signature) = "transfer,transfer_id,request_id";
   }
 }
 
@@ -117,11 +118,11 @@ message CreateTransferRequest {
 
   // A unique identifier for this request. Restricted to 36 ASCII characters.
   // A random UUID is recommended.
-  // This request is only idempotent if a `request_id` is provided. Reusing
-  // the same `request_id` with different request parameters fails with
+  // Reusing the same `request_id` with different request parameters fails with
   // `INVALID_ARGUMENT`.
+  // (-- api-linter: core::0133::request-required-fields=disabled --)
   string request_id = 3 [
-    (google.api.field_behavior) = OPTIONAL,
+    (google.api.field_behavior) = REQUIRED,
     (google.api.field_info).format = UUID4
   ];
 }
