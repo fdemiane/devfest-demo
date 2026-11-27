@@ -8,8 +8,10 @@ package transferv1
 
 import (
 	_ "google.golang.org/genproto/googleapis/api/annotations"
+	money "google.golang.org/genproto/googleapis/type/money"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
+	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
 	reflect "reflect"
 	sync "sync"
 	unsafe "unsafe"
@@ -21,6 +23,63 @@ const (
 	// Verify that runtime/protoimpl is sufficiently up-to-date.
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
+
+// Lifecycle state of a transfer.
+type Transfer_State int32
+
+const (
+	// Default value. This value is unused.
+	Transfer_STATE_UNSPECIFIED Transfer_State = 0
+	// The transfer has been accepted and is awaiting settlement.
+	Transfer_PENDING Transfer_State = 1
+	// The transfer has completed and balances have been updated.
+	Transfer_COMPLETED Transfer_State = 2
+	// The transfer failed and no balance changes were applied.
+	Transfer_FAILED Transfer_State = 3
+)
+
+// Enum value maps for Transfer_State.
+var (
+	Transfer_State_name = map[int32]string{
+		0: "STATE_UNSPECIFIED",
+		1: "PENDING",
+		2: "COMPLETED",
+		3: "FAILED",
+	}
+	Transfer_State_value = map[string]int32{
+		"STATE_UNSPECIFIED": 0,
+		"PENDING":           1,
+		"COMPLETED":         2,
+		"FAILED":            3,
+	}
+)
+
+func (x Transfer_State) Enum() *Transfer_State {
+	p := new(Transfer_State)
+	*p = x
+	return p
+}
+
+func (x Transfer_State) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (Transfer_State) Descriptor() protoreflect.EnumDescriptor {
+	return file_metroparadox_transfer_v1_transfer_proto_enumTypes[0].Descriptor()
+}
+
+func (Transfer_State) Type() protoreflect.EnumType {
+	return &file_metroparadox_transfer_v1_transfer_proto_enumTypes[0]
+}
+
+func (x Transfer_State) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use Transfer_State.Descriptor instead.
+func (Transfer_State) EnumDescriptor() ([]byte, []int) {
+	return file_metroparadox_transfer_v1_transfer_proto_rawDescGZIP(), []int{2, 0}
+}
 
 // Request message for SayHello.
 type SayHelloRequest struct {
@@ -105,16 +164,199 @@ func (x *SayHelloResponse) GetMessage() string {
 	return ""
 }
 
+// A money transfer between two accounts.
+type Transfer struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The resource name of the transfer.
+	// Format: transfers/{transfer}
+	Name string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	// The source account identifier to debit.
+	SourceAccount string `protobuf:"bytes,2,opt,name=source_account,json=sourceAccount,proto3" json:"source_account,omitempty"`
+	// The destination account identifier to credit.
+	DestinationAccount string `protobuf:"bytes,3,opt,name=destination_account,json=destinationAccount,proto3" json:"destination_account,omitempty"`
+	// The monetary amount to transfer.
+	Amount *money.Money `protobuf:"bytes,4,opt,name=amount,proto3" json:"amount,omitempty"`
+	// Output only. The time at which the transfer was created.
+	CreateTime *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=create_time,json=createTime,proto3" json:"create_time,omitempty"`
+	// Output only. The current state of the transfer.
+	State         Transfer_State `protobuf:"varint,6,opt,name=state,proto3,enum=metroparadox.transfer.v1.Transfer_State" json:"state,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Transfer) Reset() {
+	*x = Transfer{}
+	mi := &file_metroparadox_transfer_v1_transfer_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Transfer) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Transfer) ProtoMessage() {}
+
+func (x *Transfer) ProtoReflect() protoreflect.Message {
+	mi := &file_metroparadox_transfer_v1_transfer_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Transfer.ProtoReflect.Descriptor instead.
+func (*Transfer) Descriptor() ([]byte, []int) {
+	return file_metroparadox_transfer_v1_transfer_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *Transfer) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *Transfer) GetSourceAccount() string {
+	if x != nil {
+		return x.SourceAccount
+	}
+	return ""
+}
+
+func (x *Transfer) GetDestinationAccount() string {
+	if x != nil {
+		return x.DestinationAccount
+	}
+	return ""
+}
+
+func (x *Transfer) GetAmount() *money.Money {
+	if x != nil {
+		return x.Amount
+	}
+	return nil
+}
+
+func (x *Transfer) GetCreateTime() *timestamppb.Timestamp {
+	if x != nil {
+		return x.CreateTime
+	}
+	return nil
+}
+
+func (x *Transfer) GetState() Transfer_State {
+	if x != nil {
+		return x.State
+	}
+	return Transfer_STATE_UNSPECIFIED
+}
+
+// Request message for CreateTransfer.
+type CreateTransferRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The transfer to create.
+	Transfer *Transfer `protobuf:"bytes,1,opt,name=transfer,proto3" json:"transfer,omitempty"`
+	// The ID to use for the transfer, which will become the final component of
+	// the transfer's resource name.
+	TransferId string `protobuf:"bytes,2,opt,name=transfer_id,json=transferId,proto3" json:"transfer_id,omitempty"`
+	// A unique identifier for this request. Restricted to 36 ASCII characters.
+	// A random UUID is recommended.
+	// This request is only idempotent if a `request_id` is provided. Reusing
+	// the same `request_id` with different request parameters fails with
+	// `INVALID_ARGUMENT`.
+	RequestId     string `protobuf:"bytes,3,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CreateTransferRequest) Reset() {
+	*x = CreateTransferRequest{}
+	mi := &file_metroparadox_transfer_v1_transfer_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CreateTransferRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CreateTransferRequest) ProtoMessage() {}
+
+func (x *CreateTransferRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_metroparadox_transfer_v1_transfer_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CreateTransferRequest.ProtoReflect.Descriptor instead.
+func (*CreateTransferRequest) Descriptor() ([]byte, []int) {
+	return file_metroparadox_transfer_v1_transfer_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *CreateTransferRequest) GetTransfer() *Transfer {
+	if x != nil {
+		return x.Transfer
+	}
+	return nil
+}
+
+func (x *CreateTransferRequest) GetTransferId() string {
+	if x != nil {
+		return x.TransferId
+	}
+	return ""
+}
+
+func (x *CreateTransferRequest) GetRequestId() string {
+	if x != nil {
+		return x.RequestId
+	}
+	return ""
+}
+
 var File_metroparadox_transfer_v1_transfer_proto protoreflect.FileDescriptor
 
 const file_metroparadox_transfer_v1_transfer_proto_rawDesc = "" +
 	"\n" +
-	"'metroparadox/transfer/v1/transfer.proto\x12\x18metroparadox.transfer.v1\x1a\x1cgoogle/api/annotations.proto\"\x11\n" +
-	"\x0fSayHelloRequest\",\n" +
-	"\x10SayHelloResponse\x12\x18\n" +
-	"\amessage\x18\x01 \x01(\tR\amessage2\x8d\x01\n" +
+	"'metroparadox/transfer/v1/transfer.proto\x12\x18metroparadox.transfer.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x17google/api/client.proto\x1a\x1fgoogle/api/field_behavior.proto\x1a\x1bgoogle/api/field_info.proto\x1a\x19google/api/resource.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x17google/type/money.proto\"\x11\n" +
+	"\x0fSayHelloRequest\"2\n" +
+	"\x10SayHelloResponse\x12\x1e\n" +
+	"\amessage\x18\x01 \x01(\tB\x04\xe2A\x01\x03R\amessage\"\xe2\x03\n" +
+	"\bTransfer\x12\x18\n" +
+	"\x04name\x18\x01 \x01(\tB\x04\xe2A\x01\bR\x04name\x12,\n" +
+	"\x0esource_account\x18\x02 \x01(\tB\x05\xe2A\x02\x02\x05R\rsourceAccount\x126\n" +
+	"\x13destination_account\x18\x03 \x01(\tB\x05\xe2A\x02\x02\x05R\x12destinationAccount\x121\n" +
+	"\x06amount\x18\x04 \x01(\v2\x12.google.type.MoneyB\x05\xe2A\x02\x02\x05R\x06amount\x12A\n" +
+	"\vcreate_time\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampB\x04\xe2A\x01\x03R\n" +
+	"createTime\x12D\n" +
+	"\x05state\x18\x06 \x01(\x0e2(.metroparadox.transfer.v1.Transfer.StateB\x04\xe2A\x01\x03R\x05state\"F\n" +
+	"\x05State\x12\x15\n" +
+	"\x11STATE_UNSPECIFIED\x10\x00\x12\v\n" +
+	"\aPENDING\x10\x01\x12\r\n" +
+	"\tCOMPLETED\x10\x02\x12\n" +
+	"\n" +
+	"\x06FAILED\x10\x03:R\xeaAO\n" +
+	"\"transfer.metroparadox.com/Transfer\x12\x14transfers/{transfer}*\ttransfers2\btransfer\"\xb1\x01\n" +
+	"\x15CreateTransferRequest\x12D\n" +
+	"\btransfer\x18\x01 \x01(\v2\".metroparadox.transfer.v1.TransferB\x04\xe2A\x01\x02R\btransfer\x12%\n" +
+	"\vtransfer_id\x18\x02 \x01(\tB\x04\xe2A\x01\x01R\n" +
+	"transferId\x12+\n" +
+	"\n" +
+	"request_id\x18\x03 \x01(\tB\f\xe2A\x01\x01\xe2\x8c\xcf\xd7\b\x02\b\x01R\trequestId2\xad\x02\n" +
 	"\x0fTransferService\x12z\n" +
-	"\bSayHello\x12).metroparadox.transfer.v1.SayHelloRequest\x1a*.metroparadox.transfer.v1.SayHelloResponse\"\x17\x82\xd3\xe4\x93\x02\x11:\x01*\"\f/v1:sayHelloBe\n" +
+	"\bSayHello\x12).metroparadox.transfer.v1.SayHelloRequest\x1a*.metroparadox.transfer.v1.SayHelloResponse\"\x17\x82\xd3\xe4\x93\x02\x11:\x01*\"\f/v1:sayHello\x12\x9d\x01\n" +
+	"\x0eCreateTransfer\x12/.metroparadox.transfer.v1.CreateTransferRequest\x1a\".metroparadox.transfer.v1.Transfer\"6\xdaA\x14transfer,transfer_id\x82\xd3\xe4\x93\x02\x19:\btransfer\"\r/v1/transfersBe\n" +
 	"\x1ccom.metroparadox.transfer.v1B\rTransferProtoP\x01Z4metroparadox/gen/metroparadox/transfer/v1;transferv1b\x06proto3"
 
 var (
@@ -129,19 +371,31 @@ func file_metroparadox_transfer_v1_transfer_proto_rawDescGZIP() []byte {
 	return file_metroparadox_transfer_v1_transfer_proto_rawDescData
 }
 
-var file_metroparadox_transfer_v1_transfer_proto_msgTypes = make([]protoimpl.MessageInfo, 2)
+var file_metroparadox_transfer_v1_transfer_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
+var file_metroparadox_transfer_v1_transfer_proto_msgTypes = make([]protoimpl.MessageInfo, 4)
 var file_metroparadox_transfer_v1_transfer_proto_goTypes = []any{
-	(*SayHelloRequest)(nil),  // 0: metroparadox.transfer.v1.SayHelloRequest
-	(*SayHelloResponse)(nil), // 1: metroparadox.transfer.v1.SayHelloResponse
+	(Transfer_State)(0),           // 0: metroparadox.transfer.v1.Transfer.State
+	(*SayHelloRequest)(nil),       // 1: metroparadox.transfer.v1.SayHelloRequest
+	(*SayHelloResponse)(nil),      // 2: metroparadox.transfer.v1.SayHelloResponse
+	(*Transfer)(nil),              // 3: metroparadox.transfer.v1.Transfer
+	(*CreateTransferRequest)(nil), // 4: metroparadox.transfer.v1.CreateTransferRequest
+	(*money.Money)(nil),           // 5: google.type.Money
+	(*timestamppb.Timestamp)(nil), // 6: google.protobuf.Timestamp
 }
 var file_metroparadox_transfer_v1_transfer_proto_depIdxs = []int32{
-	0, // 0: metroparadox.transfer.v1.TransferService.SayHello:input_type -> metroparadox.transfer.v1.SayHelloRequest
-	1, // 1: metroparadox.transfer.v1.TransferService.SayHello:output_type -> metroparadox.transfer.v1.SayHelloResponse
-	1, // [1:2] is the sub-list for method output_type
-	0, // [0:1] is the sub-list for method input_type
-	0, // [0:0] is the sub-list for extension type_name
-	0, // [0:0] is the sub-list for extension extendee
-	0, // [0:0] is the sub-list for field type_name
+	5, // 0: metroparadox.transfer.v1.Transfer.amount:type_name -> google.type.Money
+	6, // 1: metroparadox.transfer.v1.Transfer.create_time:type_name -> google.protobuf.Timestamp
+	0, // 2: metroparadox.transfer.v1.Transfer.state:type_name -> metroparadox.transfer.v1.Transfer.State
+	3, // 3: metroparadox.transfer.v1.CreateTransferRequest.transfer:type_name -> metroparadox.transfer.v1.Transfer
+	1, // 4: metroparadox.transfer.v1.TransferService.SayHello:input_type -> metroparadox.transfer.v1.SayHelloRequest
+	4, // 5: metroparadox.transfer.v1.TransferService.CreateTransfer:input_type -> metroparadox.transfer.v1.CreateTransferRequest
+	2, // 6: metroparadox.transfer.v1.TransferService.SayHello:output_type -> metroparadox.transfer.v1.SayHelloResponse
+	3, // 7: metroparadox.transfer.v1.TransferService.CreateTransfer:output_type -> metroparadox.transfer.v1.Transfer
+	6, // [6:8] is the sub-list for method output_type
+	4, // [4:6] is the sub-list for method input_type
+	4, // [4:4] is the sub-list for extension type_name
+	4, // [4:4] is the sub-list for extension extendee
+	0, // [0:4] is the sub-list for field type_name
 }
 
 func init() { file_metroparadox_transfer_v1_transfer_proto_init() }
@@ -154,13 +408,14 @@ func file_metroparadox_transfer_v1_transfer_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_metroparadox_transfer_v1_transfer_proto_rawDesc), len(file_metroparadox_transfer_v1_transfer_proto_rawDesc)),
-			NumEnums:      0,
-			NumMessages:   2,
+			NumEnums:      1,
+			NumMessages:   4,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
 		GoTypes:           file_metroparadox_transfer_v1_transfer_proto_goTypes,
 		DependencyIndexes: file_metroparadox_transfer_v1_transfer_proto_depIdxs,
+		EnumInfos:         file_metroparadox_transfer_v1_transfer_proto_enumTypes,
 		MessageInfos:      file_metroparadox_transfer_v1_transfer_proto_msgTypes,
 	}.Build()
 	File_metroparadox_transfer_v1_transfer_proto = out.File

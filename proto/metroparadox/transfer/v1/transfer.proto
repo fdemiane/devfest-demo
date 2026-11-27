@@ -3,6 +3,12 @@ syntax = "proto3";
 package metroparadox.transfer.v1;
 
 import "google/api/annotations.proto";
+import "google/api/client.proto";
+import "google/api/field_behavior.proto";
+import "google/api/field_info.proto";
+import "google/api/resource.proto";
+import "google/protobuf/timestamp.proto";
+import "google/type/money.proto";
 
 option go_package = "metroparadox/gen/metroparadox/transfer/v1;transferv1";
 option java_multiple_files = true;
@@ -10,6 +16,8 @@ option java_outer_classname = "TransferProto";
 option java_package = "com.metroparadox.transfer.v1";
 
 // TransferService handles transfer operations.
+// (-- api-linter: core::0121::resource-must-support-get=disabled
+//     api-linter: core::0121::resource-must-support-list=disabled --)
 service TransferService {
   // SayHello returns a greeting message.
   rpc SayHello(SayHelloRequest) returns (SayHelloResponse) {
@@ -17,6 +25,22 @@ service TransferService {
       post: "/v1:sayHello"
       body: "*"
     };
+  }
+
+  // Creates a money transfer between two accounts.
+  //
+  // Possible errors include:
+  // - `INVALID_ARGUMENT`: invalid account, non-positive amount, unsupported
+  //   currency, currency mismatch, or `request_id` reused with different
+  //   parameters.
+  // - `NOT_FOUND`: source or destination account does not exist.
+  // - `FAILED_PRECONDITION`: insufficient funds in the source account.
+  rpc CreateTransfer(CreateTransferRequest) returns (Transfer) {
+    option (google.api.http) = {
+      post: "/v1/transfers"
+      body: "transfer"
+    };
+    option (google.api.method_signature) = "transfer,transfer_id";
   }
 }
 
@@ -26,5 +50,78 @@ message SayHelloRequest {}
 // Response message for SayHello.
 message SayHelloResponse {
   // The greeting message.
-  string message = 1;
+  string message = 1 [(google.api.field_behavior) = OUTPUT_ONLY];
+}
+
+// A money transfer between two accounts.
+message Transfer {
+  option (google.api.resource) = {
+    type: "transfer.metroparadox.com/Transfer"
+    pattern: "transfers/{transfer}"
+    singular: "transfer"
+    plural: "transfers"
+  };
+
+  // Lifecycle state of a transfer.
+  enum State {
+    // Default value. This value is unused.
+    STATE_UNSPECIFIED = 0;
+
+    // The transfer has been accepted and is awaiting settlement.
+    PENDING = 1;
+
+    // The transfer has completed and balances have been updated.
+    COMPLETED = 2;
+
+    // The transfer failed and no balance changes were applied.
+    FAILED = 3;
+  }
+
+  // The resource name of the transfer.
+  // Format: transfers/{transfer}
+  string name = 1 [(google.api.field_behavior) = IDENTIFIER];
+
+  // The source account identifier to debit.
+  string source_account = 2 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.field_behavior) = IMMUTABLE
+  ];
+
+  // The destination account identifier to credit.
+  string destination_account = 3 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.field_behavior) = IMMUTABLE
+  ];
+
+  // The monetary amount to transfer.
+  google.type.Money amount = 4 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.field_behavior) = IMMUTABLE
+  ];
+
+  // Output only. The time at which the transfer was created.
+  google.protobuf.Timestamp create_time = 5 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // Output only. The current state of the transfer.
+  State state = 6 [(google.api.field_behavior) = OUTPUT_ONLY];
+}
+
+// Request message for CreateTransfer.
+message CreateTransferRequest {
+  // The transfer to create.
+  Transfer transfer = 1 [(google.api.field_behavior) = REQUIRED];
+
+  // The ID to use for the transfer, which will become the final component of
+  // the transfer's resource name.
+  string transfer_id = 2 [(google.api.field_behavior) = OPTIONAL];
+
+  // A unique identifier for this request. Restricted to 36 ASCII characters.
+  // A random UUID is recommended.
+  // This request is only idempotent if a `request_id` is provided. Reusing
+  // the same `request_id` with different request parameters fails with
+  // `INVALID_ARGUMENT`.
+  string request_id = 3 [
+    (google.api.field_behavior) = OPTIONAL,
+    (google.api.field_info).format = UUID4
+  ];
 }

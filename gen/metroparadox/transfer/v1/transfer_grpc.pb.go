@@ -19,7 +19,8 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	TransferService_SayHello_FullMethodName = "/metroparadox.transfer.v1.TransferService/SayHello"
+	TransferService_SayHello_FullMethodName       = "/metroparadox.transfer.v1.TransferService/SayHello"
+	TransferService_CreateTransfer_FullMethodName = "/metroparadox.transfer.v1.TransferService/CreateTransfer"
 )
 
 // TransferServiceClient is the client API for TransferService service.
@@ -27,9 +28,21 @@ const (
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 //
 // TransferService handles transfer operations.
+// (-- api-linter: core::0121::resource-must-support-get=disabled
+//
+//	api-linter: core::0121::resource-must-support-list=disabled --)
 type TransferServiceClient interface {
 	// SayHello returns a greeting message.
 	SayHello(ctx context.Context, in *SayHelloRequest, opts ...grpc.CallOption) (*SayHelloResponse, error)
+	// Creates a money transfer between two accounts.
+	//
+	// Possible errors include:
+	// - `INVALID_ARGUMENT`: invalid account, non-positive amount, unsupported
+	//   currency, currency mismatch, or `request_id` reused with different
+	//   parameters.
+	// - `NOT_FOUND`: source or destination account does not exist.
+	// - `FAILED_PRECONDITION`: insufficient funds in the source account.
+	CreateTransfer(ctx context.Context, in *CreateTransferRequest, opts ...grpc.CallOption) (*Transfer, error)
 }
 
 type transferServiceClient struct {
@@ -50,14 +63,36 @@ func (c *transferServiceClient) SayHello(ctx context.Context, in *SayHelloReques
 	return out, nil
 }
 
+func (c *transferServiceClient) CreateTransfer(ctx context.Context, in *CreateTransferRequest, opts ...grpc.CallOption) (*Transfer, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(Transfer)
+	err := c.cc.Invoke(ctx, TransferService_CreateTransfer_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // TransferServiceServer is the server API for TransferService service.
 // All implementations must embed UnimplementedTransferServiceServer
 // for forward compatibility.
 //
 // TransferService handles transfer operations.
+// (-- api-linter: core::0121::resource-must-support-get=disabled
+//
+//	api-linter: core::0121::resource-must-support-list=disabled --)
 type TransferServiceServer interface {
 	// SayHello returns a greeting message.
 	SayHello(context.Context, *SayHelloRequest) (*SayHelloResponse, error)
+	// Creates a money transfer between two accounts.
+	//
+	// Possible errors include:
+	// - `INVALID_ARGUMENT`: invalid account, non-positive amount, unsupported
+	//   currency, currency mismatch, or `request_id` reused with different
+	//   parameters.
+	// - `NOT_FOUND`: source or destination account does not exist.
+	// - `FAILED_PRECONDITION`: insufficient funds in the source account.
+	CreateTransfer(context.Context, *CreateTransferRequest) (*Transfer, error)
 	mustEmbedUnimplementedTransferServiceServer()
 }
 
@@ -70,6 +105,9 @@ type UnimplementedTransferServiceServer struct{}
 
 func (UnimplementedTransferServiceServer) SayHello(context.Context, *SayHelloRequest) (*SayHelloResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method SayHello not implemented")
+}
+func (UnimplementedTransferServiceServer) CreateTransfer(context.Context, *CreateTransferRequest) (*Transfer, error) {
+	return nil, status.Error(codes.Unimplemented, "method CreateTransfer not implemented")
 }
 func (UnimplementedTransferServiceServer) mustEmbedUnimplementedTransferServiceServer() {}
 func (UnimplementedTransferServiceServer) testEmbeddedByValue()                         {}
@@ -110,6 +148,24 @@ func _TransferService_SayHello_Handler(srv interface{}, ctx context.Context, dec
 	return interceptor(ctx, in, info, handler)
 }
 
+func _TransferService_CreateTransfer_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CreateTransferRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(TransferServiceServer).CreateTransfer(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: TransferService_CreateTransfer_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(TransferServiceServer).CreateTransfer(ctx, req.(*CreateTransferRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // TransferService_ServiceDesc is the grpc.ServiceDesc for TransferService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -120,6 +176,10 @@ var TransferService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "SayHello",
 			Handler:    _TransferService_SayHello_Handler,
+		},
+		{
+			MethodName: "CreateTransfer",
+			Handler:    _TransferService_CreateTransfer_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
